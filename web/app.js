@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { createRichEditor, sourceOnly, safeURL } from './rich-editor.js';
 
 const $ = selector => document.querySelector(selector);
 const initial = [
@@ -11,7 +12,7 @@ const initial = [
 ];
 const example = { name: 'Example notebook', role: 'example', notes: initial.map((note, i) => ({ ...note, id: `example-${i}`, version: 1, updatedAt: 0 })) };
 let notebook = structuredClone(example), credentials = null, selected = notebook.notes[0].id, draft = null;
-let editing = false, dirty = false, conflict = false, timer, saving = null, refreshing = false;
+let mode = 'write', dirty = false, conflict = false, timer, saving = null, refreshing = false;
 let writes = 0, writeRevision = 0;
 let savedNotebooks = readStorage('nexa-notes:notebooks', []);
 if (!Array.isArray(savedNotebooks)) savedNotebooks = [];
@@ -45,11 +46,44 @@ function remember() {
   store('nexa-notes:notebooks', savedNotebooks.slice(0, 20));
 }
 function renderNotebooks() {
-  const select = $('#notebooks'); select.replaceChildren(new Option('Example notebook', 'example'));
-  for (const item of savedNotebooks) select.add(new Option(`${item.name} · ${item.role}`, `${item.id}:${item.token}`));
-  select.value = credentials ? `${credentials.id}:${credentials.token}` : 'example';
+  $('#notebooks>span').textContent = `${notebook.name}${credentials ? ` · ${notebook.role}` : ''}`;
+  const menu = $('#notebook-menu'); menu.replaceChildren();
+  for (const item of [null, ...savedNotebooks]) {
+    const button = document.createElement('button'); button.type = 'button'; button.setAttribute('role', 'menuitemradio');
+    button.textContent = item ? `${item.name} · ${item.role}` : 'Example notebook';
+    button.setAttribute('aria-checked', String(item ? item.id === credentials?.id && item.token === credentials?.token : !credentials));
+    button.onclick = () => run(async () => {
+      closeNotebooks(); if (!await flush()) return;
+      if (!item) return activate(structuredClone(example), null);
+      await activate(await api('', 'GET', undefined, item), { id: item.id, token: item.token });
+    });
+    menu.append(button);
+  }
   $('#notebook-name').textContent = notebook.name;
 }
+function closeNotebooks(focus = true) { $('#notebook-menu').hidden = true; $('#notebooks').setAttribute('aria-expanded', 'false'); if (focus) $('#notebooks').focus(); }
+async function openWiki(target) {
+  const title = target.trim(), note = notebook.notes.find(note => note.title.toLowerCase() === title.toLowerCase());
+  if (note) return selectNote(note.id);
+  if (writable()) return addNote(title);
+  notice('That note has not been created yet.');
+}
+let linkEditor, linkSelection, linkingNote = false;
+function editLink(editor, wiki = false) {
+  linkEditor = editor; linkingNote = wiki;
+  if (!wiki && editor.isActive('link')) editor.commands.extendMarkRange('link');
+  const { from, to } = editor.state.selection; linkSelection = { from, to };
+  $('#link-heading').textContent = wiki ? 'Link to a note' : 'Insert link';
+  $('#link-target-label').firstChild.textContent = wiki ? 'Note title' : 'URL';
+  $('#link-target').value = wiki ? '' : editor.getAttributes('link').href || '';
+  $('#link-target').placeholder = wiki ? 'Start here' : 'https://example.com';
+  $('#link-target').setAttribute('list', wiki ? 'note-titles' : '');
+  $('#note-titles').replaceChildren(...notebook.notes.map(note => new Option(note.title, note.title)));
+  $('#link-text').value = editor.state.doc.textBetween(from, to, ' ');
+  $('#remove-link').hidden = wiki || !editor.isActive('link'); $('#link-error').textContent = '';
+  $('#link-dialog').showModal(); $('#link-target').focus();
+}
+const rich = createRichEditor({ element: $('#rich-editor'), toolbar: $('#format-toolbar'), onChange: body => edited(body), onWiki: target => run(() => openWiki(target)), onLink: editLink, noteTitles: () => notebook.notes.map(note => note.title) });
 function renderList() {
   const query = $('#search').value.trim().toLowerCase(), list = $('#note-list'); list.replaceChildren();
   const notes = notebook.notes.filter(note => `${note.title}\n${note.body}`.toLowerCase().includes(query));
@@ -73,13 +107,9 @@ function renderMarkdown(body) {
     const fragment = document.createDocumentFragment(); let end = 0;
     for (const match of node.textContent.matchAll(/\[\[([^\]\n]{1,160})\]\]/g)) {
       fragment.append(document.createTextNode(node.textContent.slice(end, match.index)));
-      const button = document.createElement('button'); button.className = 'wiki'; button.textContent = match[1];
-      button.onclick = () => run(async () => {
-        const note = notebook.notes.find(note => note.title.toLowerCase() === match[1].trim().toLowerCase());
-        if (note) return selectNote(note.id);
-        if (writable()) return addNote(match[1].trim());
-        notice('That note has not been created yet.');
-      });
+      const [target, label] = match[1].split('|');
+      const button = document.createElement('button'); button.className = 'wiki'; button.textContent = label || target;
+      button.onclick = () => run(() => openWiki(target));
       fragment.append(button); end = match.index + match[0].length;
     }
     fragment.append(document.createTextNode(node.textContent.slice(end))); node.replaceWith(fragment);
@@ -88,21 +118,27 @@ function renderMarkdown(body) {
 }
 function renderContent() {
   const note = current(); $('#document').hidden = !note;
-  if (!note) { $('#word-count').textContent = ''; return; }
-  $('#title').value = draft?.title ?? note.title; $('#editor').value = draft?.body ?? note.body;
-  $('#title').readOnly = !editing || !writable();
-  $('#editor').hidden = !editing; $('#preview').hidden = editing;
-  $('#mode').textContent = editing ? 'Preview' : 'Edit'; $('#mode').hidden = !writable();
+  if (!note) { $('#word-count').textContent = ''; rich.hide(); return; }
+  const body = draft?.body ?? note.body, unsupported = sourceOnly(body);
+  const view = mode === 'write' ? !writable() ? 'read' : unsupported ? 'source' : 'write' : mode;
+  $('#title').value = draft?.title ?? note.title; $('#editor').value = body;
+  $('#title').readOnly = view === 'read' || !writable(); $('#editor').readOnly = !writable();
+  $('#editor').hidden = view !== 'source'; $('#preview').hidden = view !== 'read' || !unsupported;
+  $('#rich-editor').hidden = view === 'source' || unsupported;
+  $('#format-toolbar').hidden = view !== 'write'; $('#source-hint').hidden = !unsupported || view !== 'source';
+  for (const name of ['write', 'source', 'read']) $(`#${name}-mode`).setAttribute('aria-pressed', String(name === view));
+  $('#write-mode').hidden = !writable();
   $('#delete').hidden = !writable();
   $('#breadcrumb-title').textContent = draft?.title || note.title;
-  $('#note-meta').textContent = notebook.role === 'example' ? 'YOUR SHARED SPACE' : 'MARKDOWN NOTE';
-  renderMarkdown(draft?.body ?? note.body);
-  const backlinks = notebook.notes.filter(other => other.id !== selected && [...other.body.matchAll(/\[\[([^\]\n]+)\]\]/g)].some(match => match[1].trim().toLowerCase() === note.title.toLowerCase()));
-  $('#backlinks').hidden = !backlinks.length || editing;
+  if (!$('#rich-editor').hidden) rich.show(body, view === 'write', `${credentials?.id || 'example'}:${selected}`);
+  else rich.hide();
+  if (!$('#preview').hidden) renderMarkdown(body);
+  const backlinks = notebook.notes.filter(other => other.id !== selected && [...other.body.matchAll(/\[\[([^\]\n|]+)(?:\|[^\]\n]+)?\]\]/g)].some(match => match[1].trim().toLowerCase() === note.title.toLowerCase()));
+  $('#backlinks').hidden = !backlinks.length || view === 'source';
   $('#backlinks div').replaceChildren(...backlinks.map(note => { const button = document.createElement('button'); button.textContent = note.title; button.onclick = () => run(() => selectNote(note.id)); return button; }));
   countWords(); document.title = `${note.title} · Notes`;
 }
-function countWords() { const words = ($('#editor').value || '').trim().split(/\s+/).filter(Boolean).length; $('#word-count').textContent = `${words} words`; }
+function countWords() { const words = (draft?.body || '').trim().split(/\s+/).filter(Boolean).length; $('#word-count').textContent = `${words} words`; }
 function render() {
   renderNotebooks(); renderList(); renderContent();
   $('#new-note').disabled = !writable(); $('#import').disabled = !writable();
@@ -116,7 +152,7 @@ function loadDraft() {
   dirty = false; conflict = false;
   const local = writable() && draftKey() && readStorage(draftKey(), null);
   if (note && local && typeof local.title === 'string' && typeof local.body === 'string' && Number.isInteger(local.version)) {
-    draft = local; dirty = true; editing = true;
+    draft = local; dirty = true;
     conflict = local.version !== note.version;
     if (conflict) $('#conflict>span').textContent = note.version === 0 ? 'This note was deleted. Your draft is still here.' : 'Someone else changed this note. Your draft is still here.';
     if (!conflict) timer = setTimeout(() => run(save), 650);
@@ -125,12 +161,13 @@ function loadDraft() {
 }
 async function selectNote(id) {
   if (!await flush()) return;
-  selected = id; editing = false; loadDraft(); render();
+  selected = id; loadDraft(); render();
   $('.sidebar').classList.remove('open'); $('.document-scroll').scrollTop = 0;
 }
-function edited() {
+function edited(body = draft?.body || '') {
   if (!writable()) return;
-  draft = { ...draft, title: $('#title').value, body: $('#editor').value }; dirty = true;
+  draft = { ...draft, title: $('#title').value, body }; dirty = true;
+  $('#editor').value = body; $('#breadcrumb-title').textContent = draft.title || 'Untitled';
   store(draftKey(), draft); status('Unsaved'); countWords(); renderList();
   clearTimeout(timer); if (!conflict) timer = setTimeout(() => run(save), 650);
 }
@@ -146,7 +183,6 @@ async function save() {
       if (draft.title === sent.title && draft.body === sent.body) { dirty = false; draft = { title: saved.title, body: saved.body, version: saved.version }; removeStorage(key); }
       else { draft.version = saved.version; store(key, draft); }
       status(dirty ? 'Unsaved' : 'Saved'); notice(); renderList();
-      if (!editing) renderContent();
       if (dirty) timer = setTimeout(() => run(save), 650);
     } catch (error) {
       if ([409, 404].includes(error.status)) {
@@ -165,7 +201,7 @@ async function flush() {
   return true;
 }
 async function activate(data, auth) {
-  clearTimeout(timer); notebook = data; credentials = auth; selected = notebook.notes[0]?.id; editing = false;
+  clearTimeout(timer); notebook = data; credentials = auth; selected = notebook.notes[0]?.id; mode = 'write';
   if (credentials) {
     const previous = readStorage(selectionKey(), null);
     if (typeof previous === 'string') {
@@ -188,11 +224,11 @@ async function createNotebook() {
 async function addNote(title = 'Untitled', body = '') {
   if (!writable() || !await flush()) return;
   const note = await api('/notes', 'POST', { title, body });
-  notebook.notes.unshift(note); selected = note.id; editing = true; loadDraft(); render();
+  notebook.notes.unshift(note); selected = note.id; mode = 'write'; loadDraft(); render();
   $('.sidebar').classList.remove('open'); $('#title').focus(); $('#title').select();
 }
 async function refresh() {
-  if (!credentials || dirty || saving || refreshing || writes || document.hidden) return;
+  if (!credentials || dirty || saving || refreshing || writes || document.hidden || $('dialog[open]')) return;
   refreshing = true; const auth = credentials, revision = writeRevision;
   try {
     const data = await api('', 'GET');
@@ -215,23 +251,43 @@ function download(name, body) {
   const url = URL.createObjectURL(new Blob([body], { type: 'text/markdown;charset=utf-8' }));
   const a = document.createElement('a'); a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-$('#title').oninput = edited; $('#editor').oninput = edited; $('#search').oninput = renderList;
+$('#title').oninput = () => edited(); $('#editor').oninput = () => edited($('#editor').value); $('#search').oninput = renderList;
 $('#new-note').onclick = () => run(() => addNote());
 for (const id of ['start', 'new-notebook']) $(`#${id}`).onclick = () => run(async () => { const button = $(`#${id}`); button.disabled = true; try { await createNotebook(); } finally { button.disabled = false; } });
-$('#mode').onclick = () => { editing = !editing; renderContent(); if (editing) $('#editor').focus(); };
+for (const name of ['write', 'source', 'read']) $(`#${name}-mode`).onclick = () => { mode = name; renderContent(); };
 $('#export').onclick = () => { if (draft) download(`${draft.title.replace(/[^\p{L}\p{N} _-]/gu, '').slice(0, 100) || 'note'}.md`, draft.body); };
 $('#delete').onclick = () => run(async () => {
   if (!current() || !await flush() || !await confirmAction('Delete note?', `“${current().title}” will be deleted for everyone in this notebook.`)) return;
   await api(`/notes/${selected}`, 'DELETE', { version: current().version });
   notebook.notes = notebook.notes.filter(note => note.id !== selected); selected = notebook.notes[0]?.id; loadDraft(); render();
 });
-$('#notebooks').onchange = () => run(async () => {
-  const value = $('#notebooks').value;
-  if (!await flush()) { renderNotebooks(); return; }
-  if (value === 'example') return activate(structuredClone(example), null);
-  const item = savedNotebooks.find(item => `${item.id}:${item.token}` === value);
-  if (item) { try { await activate(await api('', 'GET', undefined, item), { id: item.id, token: item.token }); } finally { renderNotebooks(); } }
-});
+$('#notebooks').onclick = () => {
+  const open = $('#notebook-menu').hidden; $('#notebook-menu').hidden = !open; $('#notebooks').setAttribute('aria-expanded', String(open));
+  if (open) ($('#notebook-menu [aria-checked=true]') || $('#notebook-menu button')).focus();
+};
+$('#notebook-menu').onkeydown = event => {
+  const items = [...$('#notebook-menu').querySelectorAll('button')], index = items.indexOf(document.activeElement);
+  if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Escape'].includes(event.key)) {
+    event.preventDefault();
+    if (event.key === 'Escape') return closeNotebooks();
+    items[event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+  }
+};
+document.addEventListener('pointerdown', event => { if (!event.target.closest('.notebook-switcher')) closeNotebooks(false); });
+document.addEventListener('focusin', event => { if (!event.target.closest('.notebook-switcher')) closeNotebooks(false); });
+$('#link-form').onsubmit = event => {
+  event.preventDefault(); const target = $('#link-target').value.trim(), label = $('#link-text').value.trim();
+  if (linkEditor !== rich.editor || linkEditor.isDestroyed || !linkEditor.isEditable) return $('#link-dialog').close();
+  if (linkingNote ? !target || target.length > 160 || /[\[\]|\n]/.test(target + label) : !safeURL(target)) { $('#link-error').textContent = linkingNote ? 'Use a note title without brackets or line breaks.' : 'Enter an https://, http://, or mailto: link.'; return; }
+  const selectedText = linkEditor.state.doc.textBetween(linkSelection.from, linkSelection.to, ' ');
+  if (!linkingNote && selectedText && label === selectedText) {
+    $('#link-dialog').close(); linkEditor.chain().focus().setTextSelection(linkSelection).setLink({ href: target }).run(); return;
+  }
+  const content = linkingNote ? { type: 'wikiLink', attrs: { target, label: label === target ? '' : label } } : { type: 'text', text: label || target, marks: [{ type: 'link', attrs: { href: target } }] };
+  $('#link-dialog').close(); linkEditor.chain().focus().insertContentAt(linkSelection, content).run();
+};
+$('#close-link').onclick = () => { $('#link-dialog').close(); rich.focus(); };
+$('#remove-link').onclick = () => { $('#link-dialog').close(); linkEditor.chain().focus().setTextSelection(linkSelection).unsetLink().run(); };
 $('#save-copy').onclick = () => run(async () => {
   const note = await api('/notes', 'POST', { title: `${draft.title || 'Untitled'} (my draft)`.slice(0, 160), body: draft.body });
   removeStorage(draftKey()); notebook.notes.unshift(note); selected = note.id; loadDraft(); notice(); render();
@@ -281,7 +337,8 @@ $('#close-sidebar').onclick = () => $('.sidebar').classList.remove('open');
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape') $('.sidebar').classList.remove('open');
   if (!(event.ctrlKey || event.metaKey) || $('dialog[open]')) return;
-  if (event.key.toLowerCase() === 'k') { event.preventDefault(); $('.sidebar').classList.add('open'); $('#search').focus(); }
+  if (event.key.toLowerCase() === 'k' && !event.defaultPrevented) { event.preventDefault(); $('.sidebar').classList.add('open'); $('#search').focus(); }
+  if (event.key.toLowerCase() === 'm' && event.shiftKey) { event.preventDefault(); mode = mode === 'source' ? 'write' : 'source'; renderContent(); }
   if (event.key.toLowerCase() === 's') { event.preventDefault(); run(save); }
 });
 const theme = readStorage('nexa-notes:theme', 'dark'); document.documentElement.dataset.theme = theme === 'light' ? 'light' : 'dark';

@@ -5,7 +5,7 @@
   <aside class="sidebar" aria-label="Notebook sidebar">
     <div class="brand"><img src="/favicon.svg" width="30" height="30" alt=""><strong>Notes</strong><span>by Nexa</span><button id="close-sidebar" class="icon mobile" aria-label="Close sidebar">×</button></div>
     <div class="notebook-row"><span class="small-label">NOTEBOOK</span><button id="new-notebook" class="icon" title="Create notebook" aria-label="Create notebook">+</button></div>
-    <select id="notebooks" aria-label="Notebook"><option value="example">Example notebook</option></select>
+    <div class="notebook-switcher"><button id="notebooks" aria-label="Switch notebook" aria-haspopup="menu" aria-expanded="false" aria-controls="notebook-menu"><span>Example notebook</span><span aria-hidden="true">⌄</span></button><div id="notebook-menu" role="menu" aria-label="Notebooks" hidden></div></div>
     <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a note…" aria-label="Search notes"><kbd>⌘ K</kbd></label>
     <button id="new-note" class="new-note"><span aria-hidden="true">+</span> New note</button>
     <div class="list-heading"><span>All notes</span><span id="note-count"></span></div>
@@ -17,9 +17,12 @@
     <div id="notice" class="notice" role="status" hidden></div>
     <section id="conflict" class="conflict" role="alert" hidden><span>Your draft has a newer version on the server.</span><div><button id="save-copy">Save my draft as a new note</button><button id="use-latest">Use latest version</button></div></section>
     <div class="document-scroll"><article id="document">
-      <div class="note-actions"><span id="note-meta">YOUR SHARED SPACE</span><div><button id="mode">Edit</button><button id="export">Export</button><button id="delete" class="icon" aria-label="Delete note" title="Delete note">×</button></div></div>
+      <div class="note-actions"><div class="editor-modes" role="group" aria-label="Editor view"><button id="write-mode" aria-pressed="true">Write</button><button id="source-mode" aria-pressed="false">Markdown</button><button id="read-mode" aria-pressed="false">Read</button></div><div><button id="export">Export</button><button id="delete" class="icon" aria-label="Delete note" title="Delete note">×</button></div></div>
       <input id="title" aria-label="Note title" maxlength="160" value="Start here" readonly>
+      <div id="format-toolbar" hidden></div>
+      <p id="source-hint" class="source-hint" hidden>This note contains formatting that needs Markdown view. Your original source is preserved.</p>
       <textarea id="editor" aria-label="Note Markdown" placeholder="Write a thought. Link another note with [[double brackets]]." spellcheck="true" hidden></textarea>
+      <div id="rich-editor"></div>
       <div id="preview" class="markdown"></div>
       <section id="backlinks" class="backlinks" hidden><h2>Linked from</h2><div></div></section>
     </article></div>
@@ -28,5 +31,6 @@
 </div>
 <dialog id="share-dialog" aria-labelledby="share-heading"><form method="dialog"><div class="dialog-heading"><h2 id="share-heading">Share notebook</h2><button class="icon" aria-label="Close sharing">×</button></div></form><p>Anyone with the link can access every note in this notebook.</p><label>Access<select id="share-role"><option value="view">Can view</option><option value="edit">Can edit</option></select></label><button id="generate-link" class="primary">Create sharing link</button><p class="hint">Creating a new link replaces the previous link for that access level.</p><div id="link-result" hidden><label>Sharing link<input id="share-link" readonly></label><button id="copy-link">Copy link</button></div><hr><button id="revoke">Revoke all sharing links</button><p id="share-status" role="status"></p><details><summary>Your owner link</summary><p>Keep this link to manage the notebook from another browser. It also allows changing sharing settings.</p><input id="owner-link" aria-label="Owner link" readonly></details><hr><button id="delete-notebook" class="danger">Delete notebook</button></dialog>
 <dialog id="confirm-dialog" aria-labelledby="confirm-heading"><form method="dialog"><h2 id="confirm-heading">Delete note?</h2><p id="confirm-text"></p><div class="confirm-actions"><button value="cancel">Cancel</button><button value="confirm" class="danger">Delete</button></div></form></dialog>
+<dialog id="link-dialog" aria-labelledby="link-heading"><form id="link-form"><div class="dialog-heading"><h2 id="link-heading">Insert link</h2><button type="button" class="icon" id="close-link" aria-label="Close link editor">×</button></div><label id="link-target-label">URL<input id="link-target" autocomplete="off" required></label><datalist id="note-titles"></datalist><label>Display text<input id="link-text" autocomplete="off"></label><p id="link-error" role="status"></p><div class="confirm-actions"><button type="button" id="remove-link">Remove link</button><button type="submit" class="primary">Apply link</button></div></form></dialog>
 <noscript>Enable JavaScript to open your notebook.</noscript>
 </body></html>

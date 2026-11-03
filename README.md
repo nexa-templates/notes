@@ -1,6 +1,6 @@
 # Notes
 
-A small shared Markdown notebook inspired by Obsidian. Write notes, link them with `[[Note title]]`, search, import/export Markdown, and share the whole notebook using a view or edit link. This is a working application, with server-side persistence and automatic synchronization between browsers.
+A small shared Markdown notebook inspired by Obsidian. Edit formatted notes directly, link them with `[[Note title]]`, search, import/export Markdown, and share the whole notebook using a view or edit link. This is a working application, with server-side persistence and automatic synchronization between browsers.
 
 [Open the live example](https://nexa-notes-template.nexa-f33.workers.dev/)
 
@@ -22,6 +22,16 @@ Choose a unique `name` in `wrangler.jsonc` before deployment. The Worker and its
 
 For a Nexa project, import `https://github.com/nexaintel2/notes.git`, keep it as the upstream, and deploy a new Worker in the customer's connected account with its own Durable Object namespace. Build command: `npm run build`. Deploy command: `npx wrangler deploy`. Do not connect customer projects to the public example's API or storage.
 
+## Editing
+
+**Write** is the default for owners and editors. The Tiptap/ProseMirror editor supports headings, bold, italic, strikethrough, highlights, inline code, nested bullet and numbered lists, checklists, quotes, rules, tables, links, and syntax-highlighted code blocks. The toolbar follows the current selection. Click a checklist box to complete an item; select a table cell to add or remove rows and columns. Choose a code block's language from the toolbar.
+
+Markdown shortcuts work as you type: `## ` starts a heading, `- ` starts a list, and `**text**` becomes bold. Type `[[` to choose a note with the arrow keys and Enter, or finish typing `[[Note title]]`. `[[Note title|Display text]]` is also supported. Click a note link to open it; Ctrl/Cmd-click opens an external link while editing. The link dialog can insert or edit links without typing Markdown.
+
+Use **Markdown** to inspect or edit the raw source, and **Read** for a quiet, read-only view. Notes are still stored and exported as Markdown. Switching views without editing preserves the exact source; formatted edits normalize Markdown whitespace and delimiters. Unsupported constructs such as raw HTML, images, frontmatter, math, embeds, and plugin syntax open in source view so editing does not silently erase them. They are preserved on export; external images and unsafe HTML never render. This covers common note editing, not Obsidian's plugin or vault ecosystem.
+
+Keyboard shortcuts: Ctrl/Cmd+B for bold, Ctrl/Cmd+I for italic, Ctrl/Cmd+K for links inside the editor (search elsewhere), Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z for undo/redo, Tab/Shift+Tab for list nesting, Ctrl/Cmd+Shift+M to switch source view, and Ctrl/Cmd+S to save now. Undo history is isolated to the current note and resets when loading remote or source changes. The notebook picker supports arrow keys and Escape and follows the selected color theme.
+
 ## Sharing and persistence
 
 - The creator receives an **owner link**, stored in that browser and visible in Share. Keep it to return on other devices. There are no accounts, password recovery, or email invitations.
@@ -41,6 +51,6 @@ npx playwright-core install chromium
 npm test
 ```
 
-Tests start an isolated local Worker and exercise persisted CRUD, notebook isolation, access levels, revoked links, simultaneous writes, size limits, unsafe Markdown, separate browser sharing, automatic sync, offline draft recovery, and mobile layouts. Screenshots are written under ignored `artifacts/`. Set `CHROMIUM_PATH` to use an existing Chromium executable. `NOTES_TEST_ORIGIN` runs the same checks against an existing deployment and deletes only notebooks created by the test.
+Tests start an isolated local Worker and exercise formatted editing, Markdown round trips, task lists, tables, links, input shortcuts, undo isolation, the notebook picker, persisted CRUD, notebook isolation, access levels, revoked links, simultaneous writes, size limits, unsafe Markdown, separate browser sharing, automatic sync, offline draft recovery, and mobile layouts. Screenshots are written under ignored `artifacts/`. Set `CHROMIUM_PATH` to use an existing Chromium executable. `NOTES_TEST_ORIGIN` runs the same checks against an existing deployment and deletes only notebooks created by the test.
 
 MIT licensed. Original interface and code; no Obsidian or Notion assets or integration.
