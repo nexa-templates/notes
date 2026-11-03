@@ -2,7 +2,7 @@
 
 A small shared Markdown notebook inspired by Obsidian. Edit formatted notes directly, link them with `[[Note title]]`, search, import/export Markdown, and share the whole notebook using a view or edit link. This is a working application, with server-side persistence and automatic synchronization between browsers.
 
-[Open the live example](https://nexa-notes-template.nexa-f33.workers.dev/)
+[Open the live example](https://nexa-notes-template.nexa-templates.workers.dev/)
 
 The example is read-only until you choose **Create your notebook**. Every new notebook has separate storage and fresh access links. The example contains fictional notes; customer data is never part of this repository.
 
@@ -20,7 +20,7 @@ npm run deploy
 
 Choose a unique `name` in `wrangler.jsonc` before deployment. The Worker and its `Notebook` Durable Object deploy together; no database IDs, external services, or secrets need to be copied. `npm run build` produces browser assets in `dist/`; a static-only deployment cannot save or share notes. Keep the Worker, binding, and SQLite class migration when adapting the template. The rate-limit namespace is scoped to the Cloudflare account; use a different namespace number if you need independent limits in another deployment.
 
-For a Nexa project, import `https://github.com/nexaintel2/notes.git`, keep it as the upstream, and deploy a new Worker in the customer's connected account with its own Durable Object namespace. Build command: `npm run build`. Deploy command: `npx wrangler deploy`. Do not connect customer projects to the public example's API or storage.
+For a Nexa project, import `https://github.com/nexa-templates/notes.git`, keep it as the upstream, and deploy a new Worker in the customer's connected account with its own Durable Object namespace. In **Build & deploy**, select that Worker and the production branch, set root `/`, install command `npm ci`, build command `npm run build`, and deploy command `npx --no-install wrangler deploy --name "$NEXA_WORKER_NAME"`. Enable automatic deployments, run the initial build, and verify the intended commit succeeds with a saved deployment and Visit URL. Later production-branch pushes deploy through the same pipeline. Keep project sign-in disabled for the public example; notebook access is controlled by its capability links. Do not connect customer projects to the public example's API or storage.
 
 ## Editing
 
