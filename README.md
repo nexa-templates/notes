@@ -1,5 +1,7 @@
 # Notes
 
+The Nexa Templates deployment is a public **Preview** for testing this template. It starts with fictional notes; creating a notebook gives the visitor a separate notebook with its own private capability links. The organization is for template development, not customer records. `vars.PREVIEW_MODE` is `"true"` in this repository; set it to `"false"` in a customer copy and deploy that copy to the customer's own account. Preview labels do not weaken notebook permissions. Hosting uses the published Cloudflare Worker, not GitHub Pages.
+
 A small shared Markdown notebook inspired by Obsidian. Edit formatted notes directly, link them with `[[Note title]]`, search, import/export Markdown, and share the whole notebook using a view or edit link. This is a working application, with server-side persistence and automatic synchronization between browsers.
 
 [Open the live example](https://nexa-notes-template.nexa-templates.workers.dev/)

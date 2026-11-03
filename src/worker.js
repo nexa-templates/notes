@@ -98,7 +98,7 @@ async function payload(request) {
 
 async function route(request, env) {
   const url = new URL(request.url), path = url.pathname;
-  if (path === '/health') return json({ service: 'nexa-notes' });
+  if (path === '/health') return json({ service: 'nexa-notes', preview: env.PREVIEW_MODE === 'true' });
   if (!path.startsWith('/api/')) return env.ASSETS.fetch(request);
   if (!['GET', 'POST', 'PUT', 'DELETE'].includes(request.method)) return error('Method not allowed.', 405);
   const origin = request.headers.get('origin');
@@ -128,7 +128,9 @@ export default {
   async fetch(request, env) {
     let response;
     try { response = await route(request, env); } catch { response = error('Unable to save right now. Your draft stays in this browser.', 503); }
+    if (env.PREVIEW_MODE === 'true' && response.headers.get('content-type')?.includes('text/html')) response = new HTMLRewriter().on('#template-preview', { element(element) { element.removeAttribute('hidden'); } }).transform(response);
     response = new Response(response.body, response);
+    if (env.PREVIEW_MODE === 'true') response.headers.set('x-robots-tag', 'noindex, nofollow');
     response.headers.set('cache-control', 'no-store');
     response.headers.set('referrer-policy', 'no-referrer');
     response.headers.set('x-content-type-options', 'nosniff');

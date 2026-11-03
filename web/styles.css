@@ -60,3 +60,4 @@ select,option{background-color:var(--panel);color:var(--text)}
 .note-suggestions button{display:block;width:100%;border:0;text-align:left;overflow:hidden;text-overflow:ellipsis;font-size:12px}
 .note-suggestions [aria-selected=true]{background:var(--accent-bg);color:var(--accent)}
 @media(max-width:700px){#format-toolbar{margin-inline:-4px}.format-row{gap:4px}.format-group{padding-left:3px}.format-row button{height:33px}.note-actions{gap:6px}.note-actions button{font-size:10px}.prose-editor{min-height:340px}}
+ .template-preview{display:flex;align-items:center;gap:12px;padding:8px 16px;background:#302747;color:#eee8ff;font-size:12px;flex-shrink:0}.template-preview[hidden]{display:none}.template-preview strong{text-transform:uppercase;letter-spacing:.08em}@media(max-width:500px){.template-preview{font-size:11px;gap:8px;padding:8px 12px}}
